@@ -1,0 +1,368 @@
+'CR3000 Series Datalogger
+Const GPSPort = Com1
+Const CAL_INTERVAL = 1440 'minutes in day
+'heat flux plate factory constant
+Const HFP01SC_CAL_1 = 15
+Const HFP01SC_CAL_2 = 15
+Const HFP01SC_CAL_3 = 15
+'Thermitor coefficients
+Const A = 0.0010295
+Const B = 0.0002391
+Const G = 0.0000001568
+'thermistor exciation voltage
+Const EX_mV = 1000  'V
+'alibration coefficients specific to this sensor (see example 1)
+Const SR01Upcal = 65.7
+Const SR01Downcal = 58.5
+Const IR01Upcal = 221.3
+Const IR01Downcal = 211.2
+'Declare Public Variables
+'housekeeping
+Public BattV
+Public PTemp_C
+'GPS
+Public RMCstring As String * 500
+Public rmcid As String
+Public rmcutc As String
+Public rmsstatus As String
+Public rmclatitude As String
+Public rmcn_s_ind As String
+Public rmclongitude As String
+Public rmce_w_ind As String
+Public rmcspeed As String
+Public rmccourse As String
+Public rmcutcdate As String
+Public rmcmagvariation As String
+Public rmcmage_w As String
+Public rmcchecksum As String
+'soil temperature
+Public T107_1
+Public T107_2
+Public T107_3
+'soil moisture
+Public kohms_1
+Public WP_kPa_1
+Public kohms_2
+Public WP_kPa_2
+Public kohms_3
+Public WP_kPa_3
+'radiation
+Public SR01Up
+Public SR01Dn
+Public IR01Up
+Public IR01Dn
+Public NR01TC
+Public NR01TK
+Public NetRs
+Public NetRl
+Public Albedo
+Public UpTot
+Public DnTot
+Public NetTot
+Public IR01UpCo
+Public IR01DnCo
+'soil heat flux
+Public shf_1
+Public shf_2
+Public shf_3
+Public shf_cal_1
+Public shf_cal_2
+Public shf_cal_3
+Public shf_cal_11
+Public shf_cal_22
+Public shf_cal_33
+Public shf_mV_1
+Public shf_mV_2
+Public shf_mV_3
+Public shf_mV_0_1
+Public shf_mV_0_2
+Public shf_mV_0_3
+Public shf_mV_180_1
+Public shf_mV_180_2
+Public shf_mV_180_3
+Public shf_mV_end_1
+Public shf_mV_end_2
+Public shf_mV_end_3
+Public V_Rf_1
+Public V_Rf_2
+Public V_Rf_3
+Public V_Rf_180_1
+Public V_Rf_180_2
+Public V_Rf_180_3
+Public sw12_1_state As Boolean
+
+'housekeeping
+Units BattV=Volts
+Units PTemp_C=Deg C
+'soil temperature
+Units T107_1=Deg C
+Units T107_2=Deg C
+Units T107_3=Deg C
+'soil moisture
+Units kohms_1=kilohms
+Units WP_kPa_1=kPa
+Units kohms_2=kilohms
+Units WP_kPa_2=kPa
+Units kohms_3=kilohms
+Units WP_kPa_3=kPa
+'radiation
+Units SR01Up = W/m2
+Units SR01Dn = W/m2
+Units IR01Up = W/m2
+Units IR01Dn = W/m2
+Units NR01TC = Deg C
+Units NR01TK = K
+Units NetRs = W/m2
+Units NetRl = W/m2
+Units Albedo = W/m2
+Units UpTot = W/m2
+Units DnTot = W/m2
+Units NetTot = W/m2
+Units IR01UpCo = W/m2
+Units IR01DnCo = W/m2
+'soil heat flux
+Units shf_1=W/m^2
+Units shf_cal_1=W/(m^2 mV)
+Units shf_cal_11=W/(m^2 mV)
+Units shf_2=W/m^2
+Units shf_cal_2=W/(m^2 mV)
+Units shf_cal_22=W/(m^2 mV)
+Units shf_3=W/m^2
+Units shf_cal_3=W/(m^2 mV)
+Units shf_cal_33=W/(m^2 mV)
+'Declare Other Variables
+'GPS
+Dim NBytesReturned As Long
+Dim SubStrings(16) As String * 32, rawdata As String *500
+Dim CalculatedChecksum As Long, ReportedChecksum As Long
+
+'Define Data Tables.
+DataTable (Housekeeping,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+	CardOut(0,-1)
+  DataInterval (0,12,HR,0) ' 12 hour data
+	Sample(1, BattV,IEEE4)
+	Sample(1, PTemp_C,IEEE4)
+EndTable
+DataTable (GPS_datetime,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+	CardOut(0,-1)
+  DataInterval (0,1,HR,0) ' 1 HR data
+	'GPS RMC
+  Sample (1,rmcutc,String)
+  Sample (1,rmcutcdate,String)
+  Sample (1,rmsstatus,String)
+EndTable
+DataTable (SoilTemperature,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+	CardOut(0,-1)
+  DataInterval (0,5,MIN,0) ' 5 minute data
+  'soil temperature
+  Sample (1,T107_1,IEEE4)
+	Sample (1,T107_2,IEEE4)
+	Sample (1,T107_3,IEEE4)
+EndTable
+DataTable (SoilMoisture,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+	CardOut(0,-1)
+  DataInterval (0,5,MIN,0) '5 minute data
+	'soil moisture
+	Sample (1,kohms_1,IEEE4)
+	Sample (1,WP_kPa_1,IEEE4)
+	Sample (1,kohms_2,IEEE4)
+	Sample (1,WP_kPa_2,IEEE4)
+	Sample (1,kohms_3,IEEE4)
+	Sample (1,WP_kPa_3,IEEE4)
+EndTable
+DataTable (SoilHeatFlux,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+  CardOut(0,-1)	
+  DataInterval (0,5,MIN,0) ' 5 minute data'
+	'soil heat flux  
+  Sample (1,shf_1,IEEE4)
+  Sample (1,shf_2,IEEE4)
+  Sample (1,shf_3,IEEE4)
+  Sample (1,shf_mV_1,IEEE4)
+  Sample (1,shf_mV_2,IEEE4)
+  Sample (1,shf_mV_3,IEEE4)  
+  Sample (1,V_Rf_1,IEEE4)
+  Sample (1,V_Rf_2,IEEE4)
+  Sample (1,V_Rf_3,IEEE4)
+  Sample (1,shf_mV_180_1,IEEE4)
+  Sample (1,shf_mV_180_2,IEEE4)
+  Sample (1,shf_mV_180_3,IEEE4)
+  Sample (1,shf_mV_0_1,IEEE4)
+  Sample (1,shf_mV_0_2,IEEE4)
+  Sample (1,shf_mV_0_3,IEEE4)
+  Sample (1,V_Rf_180_1,IEEE4)
+  Sample (1,V_Rf_180_2,IEEE4)
+  Sample (1,V_Rf_180_3,IEEE4)      
+	Sample (1,shf_cal_1,IEEE4)
+	Sample (1,shf_cal_2,IEEE4)
+	Sample (1,shf_cal_3,IEEE4)
+	Sample (1,shf_cal_11,IEEE4)
+	Sample (1,shf_cal_22,IEEE4)
+	Sample (1,shf_cal_33,IEEE4)
+	Sample (1,sw12_1_state,Boolean)
+EndTable
+DataTable (Radiation,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+  CardOut(0,-1)	
+  DataInterval (0,1,SEC,0) ' 1 second data'
+	'radiation
+	Sample(1,SR01Up,IEEE4)
+	Sample(1,SR01Dn,IEEE4)
+	Sample(1,IR01Up,IEEE4)
+	Sample(1,IR01Dn,IEEE4)
+	Sample(1,NR01TC,IEEE4)
+	Sample(1,NR01TK,IEEE4)
+	Sample(1,NetRs,IEEE4)
+	Sample(1,NetRl,IEEE4)
+	Sample(1,Albedo,IEEE4)
+	Sample(1,UpTot,IEEE4)
+	Sample(1,DnTot,IEEE4)
+	Sample(1,NetTot,IEEE4)
+	Sample(1,IR01UpCo,IEEE4)
+	Sample(1,IR01DnCo,IEEE4)
+EndTable
+
+'Define Subroutines
+Sub thermistor_T (VR,Rref,Rs,TsC, TsK) 
+	Rs = Rref * (VR/(1-VR))
+	TsK = 1/((A + (B * (LN(Rs)) + G * (LN(Rs))^3)))
+  TsC = TsK - 273.15
+EndSub
+
+'Main Program
+BeginProg
+  SerialOpen(GPSPort,4800,3,0,1001)
+	'HFP01SC factory calibration in W/(m^2 mV) = 1000/sensitivity
+	shf_cal_1=HFP01SC_CAL_1
+	shf_cal_2=HFP01SC_CAL_2
+	shf_cal_3=HFP01SC_CAL_3
+	
+	Scan (1,Sec,0,0)
+	  'house keeping
+		PanelTemp (PTemp_C,250)
+		Battery (BattV)
+		
+    'gps
+		SerialInRecord(GPSPort,rawdata,36,0,&h0D0A,NBytesReturned,11)
+		CalculatedChecksum=CheckSum(rawdata,9,Len(rawdata)-3)
+		CalculatedChecksum=CalculatedChecksum AND 255
+		ReportedChecksum=HexToDec(Right(rawdata,2))
+		If CalculatedChecksum=ReportedChecksum Then
+		  If InStr(1,rawdata,"GPRMC",2) Then
+		    RMCstring=rawdata
+		  EndIf
+		EndIf
+		SplitStr(SubStrings(),RMCstring,",",16,5)
+    rmcid = SubStrings(1)
+    rmcutc = SubStrings(2)
+    rmsstatus = SubStrings(3)
+    rmclatitude = SubStrings(4)
+    rmcn_s_ind = SubStrings(5)
+    rmclongitude = SubStrings(6)
+    rmce_w_ind = SubStrings(7)
+    rmcspeed = SubStrings(8)
+    rmccourse = SubStrings(9)
+    rmcutcdate = SubStrings(10)
+    rmcmagvariation = SubStrings(11)
+    rmcmage_w = Left(SubStrings(12),1)
+    rmcchecksum = Right(RMCstring,2)
+    
+    '107 Temperature Probe (CSL) measurement 'T107_1'
+		BrHalf(T107_1,1,mV20,1,1,1,4000,True,0,_60Hz,800,0)
+		T107_1=-53.4601+(90.807*T107_1)+(-83.257*T107_1^2)+(52.283*T107_1^3)+(-16.723*T107_1^4)+(2.211*T107_1^5)
+		'107 Temperature Probe (CSL) measurement 'T107_2'
+		BrHalf(T107_2,1,mV20,2,1,1,4000,True,0,_60Hz,800,0)
+		T107_2=-53.4601+(90.807*T107_2)+(-83.257*T107_2^2)+(52.283*T107_2^3)+(-16.723*T107_2^4)+(2.211*T107_2^5)
+		'107 Temperature Probe (CSL) measurement 'T107_3'
+		BrHalf(T107_3,1,mV20,3,1,1,4000,True,0,_60Hz,800,0)
+		T107_3=-53.4601+(90.807*T107_3)+(-83.257*T107_3^2)+(52.283*T107_3^3)+(-16.723*T107_3^4)+(2.211*T107_3^5)
+		
+    '257 Soil Moisture Sensor measurements 'kohms_1' and 'WP_kPa_1'
+		BrHalf(kohms_1,1,mV200,4,2,1,200,True,0,250,1,0)
+		kohms_1=kohms_1/(1-kohms_1)
+		WP_kPa_1=0.07407*kohms_1/(1-0.018*(T107_1-21))-0.03704
+		WP_kPa_1=WP_kPa_1*100
+		'257 Soil Moisture Sensor measurements 'kohms_2' and 'WP_kPa_2'
+		BrHalf(kohms_2,1,mV200,5,2,1,200,True,0,250,1,0)
+		kohms_2=kohms_2/(1-kohms_2)
+		WP_kPa_2=0.07407*kohms_2/(1-0.018*(T107_2-21))-0.03704
+		WP_kPa_2=WP_kPa_2*100
+		'257 Soil Moisture Sensor measurements 'kohms_3' and 'WP_kPa_3'
+		BrHalf(kohms_3,1,mV200,6,2,1,200,True,0,250,1,0)
+		kohms_3=kohms_3/(1-kohms_3)
+		WP_kPa_3=0.07407*kohms_3/(1-0.018*(T107_3-21))-0.03704
+		WP_kPa_3=WP_kPa_3*100
+		
+    'radiation
+    'NR01 Net Radiometer measurements 'SR01Up', 'SR01Dn', 'IR01Up', 'IR01Dn', 'NR01TC', 'NR01TK',
+		'NetRs', 'NetRl', 'Albedo', 'UpTot', 'DnTot', 'NetTot', 'IR01UpCo', and 'IR01DnCo'
+		VoltDiff(SR01Up,1,mV50,9,True,0,_60Hz,51.59959,0)
+		VoltDiff(SR01Dn,1,mV50,10,True,0,_60Hz,51.89413,0)
+		VoltDiff(IR01Up,1,mV20,11,True,0,_60Hz,72.30658,0)
+		VoltDiff(IR01Dn,1,mV20,12,True,0,_60Hz,66.80027,0)
+		Resistance(NR01TC,1,mV200,13,1,1,1675,True,True,0,_60Hz,1,0)
+		NR01TC=NR01TC/100
+		PRT(NR01TC,1,NR01TC,1,0)
+		NR01TK=NR01TC+273.15
+		NetRs=SR01Up-SR01Dn
+		NetRl=IR01Up-IR01Dn
+		Albedo=SR01Dn/SR01Up
+		UpTot=SR01Up+IR01Up
+		DnTot=SR01Dn+IR01Dn
+		NetTot=UpTot-DnTot
+		IR01UpCo=IR01Up+5.67*10^-8*NR01TK^4
+		IR01DnCo=IR01Dn+5.67*10^-8*NR01TK^4      
+		
+    'Soil Heat flux
+		'Measure the soil heat flux pltes
+		VoltDiff (shf_mV_1,1,mV50C,4,True,0,_60Hz,1,0)
+		VoltDiff (shf_mV_2,1,mV50C,5,True,0,_60Hz,1,0)
+		VoltDiff (shf_mV_3,1,mV50C,6,True,0,_60Hz,1,0)
+		'Apply calibration to HFP01SC 
+    shf_1=shf_mV_1*shf_cal_1	
+    shf_2=shf_mV_2*shf_cal_2
+    shf_3=shf_mV_3*shf_cal_3	
+   'Power heaters
+    PortSet(9,sw12_1_state)    
+    'measure voltage across heaters
+    VoltSe(V_Rf_1,1,mV5000,13,TRUE,0,_60Hz,0.001,0)
+    VoltSe(V_Rf_2,1,mV5000,14,TRUE,0,_60Hz,0.001,0)
+    VoltSe(V_Rf_3,1,mV5000,15,TRUE,0,_60Hz,0.001,0)
+    
+    CallTable Housekeeping
+    CallTable GPS_datetime
+    CallTable SoilTemperature
+    CallTable SoilMoisture
+    CallTable SoilHeatFlux
+    CallTable Radiation
+    
+    'Begin HFP01SC calibration on fixed interval
+    If (IfTime(0,CAL_INTERVAL,Min)) Then 'true at top of hour of new day 
+      Move(shf_mV_0_1,1,shf_mV_1,1) 'take measurment of zero heater voltage values
+      Move(shf_mV_0_2,1,shf_mV_2,1)
+      Move(shf_mV_0_3,1,shf_mV_3,1)
+      sw12_1_state=TRUE 'turn on heater
+    EndIf
+    
+    If (IfTime(3,CAL_INTERVAL,Min)) Then 'true at 3 min past hour of new day      
+      Move(shf_mV_180_1,1,shf_mV_1,1) ' heater has been on for 3 mins now take a measurement
+      Move(shf_mV_180_2,1,shf_mV_2,1)
+      Move(shf_mV_180_3,1,shf_mV_3,1)
+      
+      Move(V_Rf_180_1,1,V_Rf_1,1)
+      Move(V_Rf_180_2,1,V_Rf_2,1)
+      Move(V_Rf_180_3,1,V_Rf_3,1)
+      sw12_1_state=FALSE 'turn heater off
+    EndIf
+    
+    If (IfTime(6,CAL_INTERVAL,Min)) Then 'true at 6 min past hour of new day give 3 mins to disipate heat 
+      Move(shf_mV_end_1,1,shf_mV_1,1) 
+      Move(shf_mV_end_2,1,shf_mV_2,1) 
+      Move(shf_mV_end_3,1,shf_mV_3,1)  
+       
+     'cal new calibration factors
+      shf_cal_11=V_Rf_180_1*V_Rf_180_1*128.7/ABS(((shf_mV_0_1+shf_mV_end_1/2)-shf_mV_180_1))
+      shf_cal_22=V_Rf_180_2*V_Rf_180_2*128.7/ABS(((shf_mV_0_2+shf_mV_end_2/2)-shf_mV_180_2))  
+      shf_cal_33=V_Rf_180_3*V_Rf_180_3*128.7/ABS(((shf_mV_0_3+shf_mV_end_3/2)-shf_mV_180_3))
+    EndIf		
+	NextScan
+EndProg
+
